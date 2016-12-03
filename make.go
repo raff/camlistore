@@ -80,7 +80,7 @@ var (
 	// Our temporary source tree root and build dir, i.e: buildGoPath + "src/camlistore.org"
 	buildSrcDir string
 	// files mirrored from camRoot to buildSrcDir
-	rxMirrored = regexp.MustCompile(`^([a-zA-Z0-9\-\_]+\.(?:blobs|camli|css|eot|err|gif|go|s|pb\.go|gpg|html|ico|jpg|js|json|xml|min\.css|min\.js|mp3|otf|png|svg|pdf|psd|tiff|ttf|woff|xcf|tar\.gz|gz|tar\.xz|tbz2|zip|sh))$`)
+	rxMirrored = regexp.MustCompile(`^([a-zA-Z0-9\-\_\.]+\.(?:blobs|camli|css|eot|err|gif|go|s|pb\.go|gpg|html|ico|jpg|js|json|xml|min\.css|min\.js|mp3|otf|png|svg|pdf|psd|tiff|ttf|woff|xcf|tar\.gz|gz|tar\.xz|tbz2|zip|sh))$`)
 	// base file exceptions for the above matching, so as not to complicate the regexp any further
 	mirrorIgnored = map[string]bool{
 		"publisher.js": true, // because this file is (re)generated after the mirroring
@@ -814,7 +814,7 @@ func getVersion() string {
 	return gitVersion()
 }
 
-var gitVersionRx = regexp.MustCompile(`\b\d\d\d\d-\d\d-\d\d-[0-9a-f]{7,7}\b`)
+var gitVersionRx = regexp.MustCompile(`\b\d\d\d\d-\d\d-\d\d-[0-9a-f]{7,8}\b`)
 
 // gitVersion returns the git version of the git repo at camRoot as a
 // string of the form "yyyy-mm-dd-xxxxxxx", with an optional trailing
