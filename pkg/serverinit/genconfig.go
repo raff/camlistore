@@ -468,6 +468,92 @@ func (b *lowBuilder) addS3Config(s3 string) error {
 	return nil
 }
 
+func (b *lowBuilder) addS3AwsConfig(s3 string) error {
+	f := strings.SplitN(s3, ":", 4)
+	if len(f) < 3 {
+		return errors.New(`genconfig: expected "s3aws" field to be of form "access_key_id:secret_access_key:bucket[/optional/dir][:region]"`)
+	}
+	accessKey, secret, bucket := f[0], f[1], f[2]
+	var region string
+	if len(f) == 4 {
+		region = f[3]
+	}
+	isReplica := b.hasPrefix("/bs/")
+	s3Prefix := ""
+	s3Args := args{"bucket": bucket}
+	if accessKey != "" {
+		s3Args["aws_access_key"] = accessKey
+	}
+	if secret != "" {
+		s3Args["aws_secret_access_key"] = secret
+	}
+	if region != "" {
+		s3Args["region"] = region
+	}
+	if isReplica {
+		s3Prefix = "/sto-s3/"
+		b.addPrefix(s3Prefix, "storage-s3aws", s3Args)
+		if b.high.BlobPath == "" && !b.high.MemoryStorage {
+			panic("unexpected empty blobpath with sync-to-s3")
+		}
+		b.addPrefix("/sync-to-s3/", "sync", args{
+			"from": "/bs/",
+			"to":   s3Prefix,
+			"queue": b.thatQueueUnlessMemory(
+				map[string]interface{}{
+					"type": b.kvFileType(),
+					"file": filepath.Join(b.high.BlobPath, "sync-to-s3-queue."+b.kvFileType()),
+				}),
+		})
+		return nil
+	}
+
+	// TODO(mpl): s3CacheBucket
+	// See https://camlistore.org/issue/85
+	b.addPrefix("/cache/", "storage-filesystem", args{
+		"path": filepath.Join(tempDir(), "camli-cache"),
+	})
+
+	s3Prefix = "/bs/"
+	if !b.high.PackRelated {
+		b.addPrefix(s3Prefix, "storage-s3aws", s3Args)
+		return nil
+	}
+	packedS3Args := func(bucket string) args {
+		a := args{"bucket": bucket}
+		if accessKey != "" {
+			a["aws_access_key"] = accessKey
+		}
+		if secret != "" {
+			a["aws_secret_access_key"] = secret
+		}
+		if region != "" {
+			a["region"] = region
+		}
+		return a
+	}
+
+	b.addPrefix("/bs-loose/", "storage-s3aws", packedS3Args(path.Join(bucket, "loose")))
+	b.addPrefix("/bs-packed/", "storage-s3aws", packedS3Args(path.Join(bucket, "packed")))
+
+	// If index is DBMS, then blobPackedIndex is in DBMS too, with
+	// whatever dbname is defined for "blobpacked_index", or defaulting
+	// to "blobpacked_index". Otherwise blobPackedIndex is same
+	// file-based DB as the index, in same dir, but named
+	// packindex.dbtype.
+	blobPackedIndex, err := b.sortedStorageAt("blobpacked_index", filepath.Join(b.indexFileDir(), "packindex"))
+	if err != nil {
+		return err
+	}
+	b.addPrefix(s3Prefix, "storage-blobpacked", args{
+		"smallBlobs": "/bs-loose/",
+		"largeBlobs": "/bs-packed/",
+		"metaIndex":  blobPackedIndex,
+	})
+
+	return nil
+}
+
 func (b *lowBuilder) addGoogleDriveConfig(v string) error {
 	f := strings.SplitN(v, ":", 4)
 	if len(f) != 4 {
@@ -853,10 +939,10 @@ func (b *lowBuilder) build() (*Config, error) {
 
 	noLocalDisk := conf.BlobPath == ""
 	if noLocalDisk {
-		if !conf.MemoryStorage && conf.S3 == "" && conf.GoogleCloudStorage == "" {
-			return nil, errors.New("Unless memoryStorage is set, you must specify at least one storage option for your blobserver (blobPath (for localdisk), s3, googlecloudstorage).")
+		if !conf.MemoryStorage && conf.S3 == "" && conf.S3Aws == "" && conf.GoogleCloudStorage == "" {
+			return nil, errors.New("Unless memoryStorage is set, you must specify at least one storage option for your blobserver (blobPath (for localdisk), s3, s3aws, googlecloudstorage).")
 		}
-		if !conf.MemoryStorage && conf.S3 != "" && conf.GoogleCloudStorage != "" {
+		if !conf.MemoryStorage && conf.S3 != "" && conf.S3Aws != "" && conf.GoogleCloudStorage != "" {
 			return nil, errors.New("Using S3 as a primary storage and Google Cloud Storage as a mirror is not supported for now.")
 		}
 	}
@@ -925,6 +1011,11 @@ func (b *lowBuilder) build() (*Config, error) {
 
 	if conf.S3 != "" {
 		if err := b.addS3Config(conf.S3); err != nil {
+			return nil, err
+		}
+	}
+	if conf.S3Aws != "" {
+		if err := b.addS3AwsConfig(conf.S3Aws); err != nil {
 			return nil, err
 		}
 	}

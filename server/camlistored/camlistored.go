@@ -59,6 +59,7 @@ import (
 	_ "camlistore.org/pkg/blobserver/remote"
 	_ "camlistore.org/pkg/blobserver/replica"
 	_ "camlistore.org/pkg/blobserver/s3"
+	_ "camlistore.org/pkg/blobserver/s3aws"
 	_ "camlistore.org/pkg/blobserver/shard"
 	// Indexers: (also present themselves as storage targets)
 	"camlistore.org/pkg/index"
