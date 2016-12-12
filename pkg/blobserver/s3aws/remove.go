@@ -22,6 +22,7 @@ import (
 	"go4.org/syncutil"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/s3"
 )
 
@@ -45,6 +46,11 @@ func (sto *s3Storage) RemoveBlobs(blobs []blob.Ref) error {
 			}
 
 			_, err := sto.s3Client.DeleteObject(params)
+			if reqErr, ok := err.(awserr.RequestFailure); ok {
+				if reqErr.StatusCode() == 404 {
+					return nil
+				}
+			}
 			return err
 
 		})
