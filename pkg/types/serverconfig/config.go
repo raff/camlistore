@@ -69,6 +69,7 @@ type Config struct {
 	Mongo             string       `json:"mongo,omitempty"`             // MongoDB credentials ([username:password@]host), for indexing with MongoDB.
 	PostgreSQL        string       `json:"postgres,omitempty"`          // PostgreSQL credentials (username@host:password), for indexing with PostgreSQL.
 	SQLite            string       `json:"sqlite,omitempty"`            // path to the SQLite file, for indexing with SQLite.
+	DynamoDB          string       `json:"dynamo,omitempty"`            // DynamoDB configuration: access_key_id:secret_access_key:dynamodb_table[:region].
 
 	// DBNames lists which database names to use for various types of key/value stores. The keys may be:
 	//    "index"               (overrides 'dbname' key above)

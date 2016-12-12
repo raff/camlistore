@@ -211,6 +211,8 @@ func (b *lowBuilder) sortedName() string {
 		return "cznic/kv"
 	case b.high.LevelDB != "":
 		return "LevelDB"
+	case b.high.DynamoDB != "":
+		return "DynamoDB"
 	}
 	panic("internal error: sortedName didn't find a sorted implementation")
 }
@@ -279,6 +281,44 @@ func (b *lowBuilder) mongoIndexStorage(confStr, sortedType string) (map[string]i
 	return nil, errors.New("Malformed mongo config string; want form: \"user:password@host\"")
 }
 
+func (b *lowBuilder) dynamoIndexStorage(confStr, sortedType string) (map[string]interface{}, error) {
+	/*
+		dbName := b.dbName(sortedType)
+		if dbName == "" {
+			return nil, fmt.Errorf("no database name configured for sorted store %q", sortedType)
+		}
+	*/
+	log.Println("dynamoIndexStorage", sortedType)
+
+	f := strings.SplitN(confStr, ":", 4)
+	if len(f) < 3 {
+		return nil, errors.New(`genconfig: expected "dynamo" field to be of form "access_key_id:secret_access_key:table_name[:region]"`)
+	}
+
+	accessKey, secret, table := f[0], f[1], f[2]
+	var region string
+	if len(f) == 4 {
+		region = f[3]
+	}
+
+	dynamoArgs := map[string]interface{}{
+		"type":  "dynamo",
+		"table": table,
+	}
+
+	if accessKey != "" {
+		dynamoArgs["aws_access_key"] = accessKey
+	}
+	if secret != "" {
+		dynamoArgs["aws_secret_access_key"] = secret
+	}
+	if region != "" {
+		dynamoArgs["region"] = region
+	}
+
+	return dynamoArgs, nil
+}
+
 // parses "user@host:password", which you think would be easy, but we
 // documented this format without thinking about port numbers, so this
 // uses heuristics to guess what extra colons mean.
@@ -340,6 +380,9 @@ func (b *lowBuilder) sortedStorageAt(sortedType, filePrefix string) (map[string]
 	}
 	if b.high.Mongo != "" {
 		return b.mongoIndexStorage(b.high.Mongo, sortedType)
+	}
+	if b.high.DynamoDB != "" {
+		return b.dynamoIndexStorage(b.high.DynamoDB, sortedType)
 	}
 	if b.high.MemoryIndex {
 		return map[string]interface{}{
@@ -919,13 +962,13 @@ func (b *lowBuilder) build() (*Config, error) {
 	low["https"] = conf.HTTPS
 	low["auth"] = conf.Auth
 
-	numIndexers := numSet(conf.LevelDB, conf.Mongo, conf.MySQL, conf.PostgreSQL, conf.SQLite, conf.KVFile, conf.MemoryIndex)
+	numIndexers := numSet(conf.LevelDB, conf.Mongo, conf.DynamoDB, conf.MySQL, conf.PostgreSQL, conf.SQLite, conf.KVFile, conf.MemoryIndex)
 
 	switch {
 	case b.runIndex() && numIndexers == 0:
-		return nil, fmt.Errorf("Unless runIndex is set to false, you must specify an index option (kvIndexFile, leveldb, mongo, mysql, postgres, sqlite, memoryIndex).")
+		return nil, fmt.Errorf("Unless runIndex is set to false, you must specify an index option (kvIndexFile, leveldb, mongo, dynamo, mysql, postgres, sqlite, memoryIndex).")
 	case b.runIndex() && numIndexers != 1:
-		return nil, fmt.Errorf("With runIndex set true, you can only pick exactly one indexer (mongo, mysql, postgres, sqlite, kvIndexFile, leveldb, memoryIndex).")
+		return nil, fmt.Errorf("With runIndex set true, you can only pick exactly one indexer (mongo, dynamo, mysql, postgres, sqlite, kvIndexFile, leveldb, memoryIndex).")
 	case !b.runIndex() && numIndexers != 0:
 		log.Printf("Indexer disabled, but %v will be used for other indexes, queues, caches, etc.", b.sortedName())
 	}
