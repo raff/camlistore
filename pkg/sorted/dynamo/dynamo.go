@@ -55,6 +55,12 @@ func (l loggerType) Println(args ...interface{}) {
 	}
 }
 
+func (l loggerType) Printf(fmt string, args ...interface{}) {
+	if l {
+		log.Printf(fmt, args...)
+	}
+}
+
 var (
 	logger = loggerType(false)
 )
@@ -202,21 +208,52 @@ func (kv *keyValue) CommitBatch(bm sorted.BatchMutation) error {
 		return errors.New("invalid batch type")
 	}
 
+	requests := []*dynamodb.WriteRequest{}
+
 	for _, m := range b.Mutations() {
+		var wr dynamodb.WriteRequest
+
 		if m.IsDelete() {
-			if err := kv.Delete(m.Key()); err != nil && err != sorted.ErrNotFound {
-				return err
-			}
+			wr.DeleteRequest = &dynamodb.DeleteRequest{Key: kv.item(m.Key(), noValue)}
 		} else {
 			if err := sorted.CheckSizes(m.Key(), m.Value()); err != nil {
 				log.Printf("Skipping storing (%q:%q): %v", m.Key(), m.Value(), err)
 				continue
 			}
-			if err := kv.Set(m.Key(), m.Value()); err != nil {
-				return err
-			}
+
+			wr.PutRequest = &dynamodb.PutRequest{Item: kv.item(m.Key(), m.Value())}
+		}
+
+		requests = append(requests, &wr)
+	}
+
+	logger.Printf("CommitBatch %d items", len(requests))
+
+	for len(requests) > 0 {
+		var writebatch []*dynamodb.WriteRequest
+
+		if len(requests) > 25 { // max size of batch list
+			writebatch, requests = requests[:25], requests[25:]
+		} else {
+			writebatch, requests = requests, requests[:0]
+		}
+
+		params := &dynamodb.BatchWriteItemInput{
+			RequestItems: map[string][]*dynamodb.WriteRequest{kv.Table: writebatch},
+		}
+
+		res, err := kv.db.BatchWriteItem(params)
+		if err != nil {
+			logger.Println("BatchWriteItem", err)
+			return nil
+		}
+
+		if len(res.UnprocessedItems) > 0 {
+			log.Printf("reprocessing %d items: %s", len(res.UnprocessedItems), res.UnprocessedItems)
+			requests = append(res.UnprocessedItems[kv.Table], requests...)
 		}
 	}
+
 	return nil
 }
 
