@@ -1,0 +1,10 @@
+{
+	"listen": "localhost:3179",
+	"auth": "userpass:camlistore:pass3179",
+	"blobPath": "/tmp/blobs",
+        "dynamo": "xyz:secret:camlitest:us-east-1",
+	"identity": "26F5ABDA",
+	"identitySecretRing": "/path/to/secring",
+	"ownerName": "Alice",
+	"shareHandlerPath": "/share/"
+}
